@@ -4,6 +4,7 @@ from pathlib import Path
 
 from backend.core.config import load_config
 from backend.core.errors import AppError
+from backend.core.ffmpeg import run_command
 from backend.core.utils import read_json, write_json
 from backend.schemas.clips import ClipCandidate
 from backend.schemas.feedback import FeedbackRequest
@@ -21,9 +22,78 @@ from backend.services.learning.personal_ranker import apply_personal_ranking
 from backend.services.renderer import render_clip
 from backend.services.semantic_analyzer import find_interesting_moments
 from backend.services.sentence_segmenter import segment_transcript
-from backend.services.subtitles import write_ass, write_clip_srt
+from backend.services.subtitles import clip_subtitle_segments, write_ass, write_clip_srt
 from backend.services.transcript_postprocess import save_transcript
 from backend.services.transcription import is_synthetic_transcript, transcribe_audio
+
+
+def _subtitle_tail_seconds(segments: list) -> float:
+    return max((float(segment.end) for segment in segments), default=0.0)
+
+
+def _needs_clip_subtitle_pass(segments: list, duration: float) -> bool:
+    if duration < 8:
+        return not segments
+    if not segments:
+        return True
+    return _subtitle_tail_seconds(segments) < duration - 5
+
+
+def _extract_clip_audio(source_path: Path, clip: ClipCandidate, output_path: Path, config) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    run_command(
+        [
+            config.paths.ffmpeg_path,
+            "-y",
+            "-ss",
+            f"{clip.start:.3f}",
+            "-i",
+            str(source_path),
+            "-t",
+            f"{clip.duration:.3f}",
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            str(output_path),
+        ],
+        timeout=None,
+    )
+    return output_path
+
+
+def _clip_subtitle_source(
+    source_path: Path,
+    output_dir: Path,
+    clip: ClipCandidate,
+    transcript: Transcript,
+    config,
+) -> tuple[Transcript, float, float] | None:
+    full_segments = []
+    if not is_synthetic_transcript(transcript):
+        full_segments = clip_subtitle_segments(transcript, clip.start, clip.end, max_words=config.subtitles.max_words_per_line)
+    if full_segments and not _needs_clip_subtitle_pass(full_segments, clip.duration):
+        return transcript, clip.start, clip.end
+
+    clip_transcript_path = output_dir / "subtitles" / f"{clip.id}_speech_transcript.json"
+    if clip_transcript_path.exists():
+        clip_transcript = Transcript.model_validate(read_json(clip_transcript_path))
+    else:
+        audio_path = output_dir / "subtitles" / f"{clip.id}_speech.wav"
+        _extract_clip_audio(source_path, clip, audio_path, config)
+        clip_transcript = transcribe_audio(audio_path, config, duration=clip.duration)
+        write_json(clip_transcript_path, clip_transcript.model_dump())
+
+    if is_synthetic_transcript(clip_transcript):
+        if full_segments:
+            return transcript, clip.start, clip.end
+        return None
+
+    clip_segments = clip_subtitle_segments(clip_transcript, 0, clip.duration, max_words=config.subtitles.max_words_per_line)
+    if not full_segments or _subtitle_tail_seconds(clip_segments) > _subtitle_tail_seconds(full_segments) + 2:
+        return clip_transcript, 0, clip.duration
+    return transcript, clip.start, clip.end
 
 
 def run_analysis(project_id: str, job_id: str) -> None:
@@ -134,12 +204,17 @@ def run_render(project_id: str, job_id: str, clip_ids: list[str] | None = None) 
             edit_plan_path = output_dir / "metadata" / f"{clip.id}_edit_plan.json"
             caption_path = output_dir / "metadata" / f"{clip.id}_caption.txt"
             render_ass_path: Path | None = None
-            if config.subtitles.enabled and not is_synthetic_transcript(transcript):
-                write_clip_srt(transcript, clip.start, clip.end, srt_path, max_words=config.subtitles.max_words_per_line)
+            if config.subtitles.enabled:
+                subtitle_source = _clip_subtitle_source(source_path, output_dir, clip, transcript, config)
+            else:
+                subtitle_source = None
+            if subtitle_source:
+                subtitle_transcript, subtitle_start, subtitle_end = subtitle_source
+                write_clip_srt(subtitle_transcript, subtitle_start, subtitle_end, srt_path, max_words=config.subtitles.max_words_per_line)
                 write_ass(
-                    transcript,
-                    clip.start,
-                    clip.end,
+                    subtitle_transcript,
+                    subtitle_start,
+                    subtitle_end,
                     ass_path,
                     font_size=config.subtitles.font_size,
                     max_words=config.subtitles.max_words_per_line,
