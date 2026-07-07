@@ -38,44 +38,65 @@ def _fallback_transcript(duration: float, language: str) -> Transcript:
     return Transcript(language=language, duration=duration, engine="fallback", segments=segments, text=" ".join(s.text for s in segments))
 
 
+def is_synthetic_transcript(transcript: Transcript) -> bool:
+    return transcript.engine == "fallback"
+
+
+def _transcribe_with_faster_whisper(audio_path: Path, config: Settings, device: str, compute_type: str) -> Transcript:
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(config.transcription.model, device=device, compute_type=compute_type)
+    segments_iter, info = model.transcribe(
+        str(audio_path),
+        language=config.transcription.language or None,
+        vad_filter=config.transcription.vad_filter,
+        word_timestamps=config.transcription.word_timestamps,
+    )
+    segments: list[TranscriptSegment] = []
+    for idx, segment in enumerate(segments_iter, start=1):
+        words = [
+            TranscriptWord(
+                word=word.word.strip(),
+                start=float(word.start or segment.start),
+                end=float(word.end or segment.end),
+                probability=word.probability,
+            )
+            for word in (segment.words or [])
+            if word.word and word.word.strip()
+        ]
+        segments.append(
+            TranscriptSegment(
+                id=idx,
+                start=float(segment.start),
+                end=float(segment.end),
+                text=segment.text.strip(),
+                words=words,
+            )
+        )
+    text = " ".join(segment.text for segment in segments)
+    return Transcript(
+        language=info.language or config.transcription.language,
+        duration=info.duration,
+        engine=f"faster-whisper:{device}",
+        segments=segments,
+        text=text,
+    )
+
+
 def transcribe_audio(audio_path: Path, config: Settings, duration: float = 0) -> Transcript:
     if config.transcription.engine == "fallback":
         return _fallback_transcript(duration, config.transcription.language)
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError:
-        return _fallback_transcript(duration, config.transcription.language)
 
-    try:
-        model = WhisperModel(config.transcription.model, device=config.transcription.device, compute_type=config.transcription.compute_type)
-        segments_iter, info = model.transcribe(
-            str(audio_path),
-            language=config.transcription.language or None,
-            vad_filter=config.transcription.vad_filter,
-            word_timestamps=config.transcription.word_timestamps,
-        )
-        segments: list[TranscriptSegment] = []
-        for idx, segment in enumerate(segments_iter, start=1):
-            words = [
-                TranscriptWord(
-                    word=word.word.strip(),
-                    start=float(word.start or segment.start),
-                    end=float(word.end or segment.end),
-                    probability=word.probability,
-                )
-                for word in (segment.words or [])
-                if word.word and word.word.strip()
-            ]
-            segments.append(
-                TranscriptSegment(
-                    id=idx,
-                    start=float(segment.start),
-                    end=float(segment.end),
-                    text=segment.text.strip(),
-                    words=words,
-                )
-            )
-        text = " ".join(segment.text for segment in segments)
-        return Transcript(language=info.language or config.transcription.language, duration=duration or info.duration, engine="faster-whisper", segments=segments, text=text)
-    except Exception:
-        return _fallback_transcript(duration, config.transcription.language)
+    attempts = [(config.transcription.device, config.transcription.compute_type)]
+    if (config.transcription.device, config.transcription.compute_type) != ("cpu", "int8"):
+        attempts.append(("cpu", "int8"))
+
+    for device, compute_type in attempts:
+        try:
+            transcript = _transcribe_with_faster_whisper(audio_path, config, device, compute_type)
+            transcript.duration = duration or transcript.duration
+            return transcript
+        except Exception:
+            continue
+
+    return _fallback_transcript(duration, config.transcription.language)

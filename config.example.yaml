@@ -14,8 +14,8 @@ transcription:
   engine: "faster-whisper"
   model: "large-v3-turbo"
   language: "ru"
-  device: "cuda"
-  compute_type: "float16"
+  device: "cpu"
+  compute_type: "int8"
   vad_filter: true
   word_timestamps: true
   whisperx_enabled: false
@@ -47,6 +47,7 @@ render:
   fps: 30
   video_codec: "h264_nvenc"
   fallback_video_codec: "libx264"
+  require_gpu: true
   audio_codec: "aac"
   audio_bitrate: "192k"
   video_bitrate: "12M"
@@ -79,7 +80,7 @@ dynamic_edit:
   punch_zoom_enabled: true
   max_punch_zoom_per_10_sec: 3
   pattern_interrupt_every_sec: 3.2
-  hook_title_enabled: true
+  hook_title_enabled: false
   progress_bar_enabled: true
   keyword_emphasis_enabled: true
   audio_normalization_enabled: true

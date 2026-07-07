@@ -12,6 +12,7 @@ frontend/node_modules/
 frontend/dist/
 
 # Local config and logs
+config.yaml
 .env
 .env.*
 !.env.example
@@ -22,6 +23,7 @@ output/*
 !output/.gitkeep
 temp/*
 !temp/.gitkeep
+tools/ffmpeg/
 
 # OS/editor
 .DS_Store

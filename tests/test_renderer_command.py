@@ -1,9 +1,13 @@
 from pathlib import Path
 
+import pytest
+
+from backend.core.errors import AppError
 from backend.core.config import Settings
 from backend.schemas.clips import ClipCandidate
 from backend.services.edit_planner import build_edit_plan
-from backend.services.renderer import build_ffmpeg_command
+from backend.services import renderer
+from backend.services.renderer import build_ffmpeg_command, render_clip
 
 
 def test_renderer_command_contains_vertical_filters_badge_overlay_and_fallback_codec(tmp_path):
@@ -47,3 +51,28 @@ def test_renderer_command_contains_vertical_filters_badge_overlay_and_fallback_c
     assert "libx264" in fallback
     assert "-crf" in fallback
     assert "18" in fallback
+
+
+def test_renderer_requires_gpu_when_configured(monkeypatch, tmp_path):
+    settings = Settings()
+    settings.render.require_gpu = True
+    clip = ClipCandidate(
+        id="clip_001",
+        moment_id="moment_001",
+        start=1,
+        end=4,
+        duration=3,
+        final_score=88,
+        moment_type="insight",
+        hook_text="hook",
+        summary="summary",
+        reason="reason",
+        text="some transcript",
+        suggested_title="title",
+        suggested_caption="caption",
+    )
+    plan = build_edit_plan(clip, settings)
+    monkeypatch.setattr(renderer, "_probe_encoder", lambda ffmpeg_path, codec: "driver too old")
+
+    with pytest.raises(AppError, match="h264_nvenc unavailable"):
+        render_clip(Path("in.mp4"), tmp_path / "out.mp4", clip, plan, settings)

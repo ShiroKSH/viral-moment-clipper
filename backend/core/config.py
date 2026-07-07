@@ -28,8 +28,8 @@ class TranscriptionConfig(BaseModel):
     engine: str = "faster-whisper"
     model: str = "large-v3-turbo"
     language: str = "ru"
-    device: str = "cuda"
-    compute_type: str = "float16"
+    device: str = "cpu"
+    compute_type: str = "int8"
     vad_filter: bool = True
     word_timestamps: bool = True
     whisperx_enabled: bool = False
@@ -64,6 +64,7 @@ class RenderConfig(BaseModel):
     fps: int = 30
     video_codec: str = "h264_nvenc"
     fallback_video_codec: str = "libx264"
+    require_gpu: bool = True
     audio_codec: str = "aac"
     audio_bitrate: str = "192k"
     video_bitrate: str = "12M"
@@ -99,7 +100,7 @@ class DynamicEditConfig(BaseModel):
     punch_zoom_enabled: bool = True
     max_punch_zoom_per_10_sec: int = 3
     pattern_interrupt_every_sec: float = 3.2
-    hook_title_enabled: bool = True
+    hook_title_enabled: bool = False
     progress_bar_enabled: bool = True
     keyword_emphasis_enabled: bool = True
     audio_normalization_enabled: bool = True

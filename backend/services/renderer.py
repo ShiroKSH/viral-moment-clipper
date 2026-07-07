@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 import textwrap
 
 from backend.core.config import Settings
+from backend.core.errors import AppError
 from backend.core.ffmpeg import run_command
 from backend.schemas.clips import ClipCandidate
 from backend.schemas.render import EditPlan
@@ -60,6 +62,32 @@ def _operation_windows(edit_plan: EditPlan, operation_type: str) -> list[tuple[f
         for operation in edit_plan.operations
         if operation.type == operation_type and operation.start is not None and operation.end is not None and operation.end > operation.start
     ]
+
+
+@lru_cache(maxsize=16)
+def _probe_encoder(ffmpeg_path: str, codec: str) -> str | None:
+    if codec in {"libx264", "libx265"}:
+        return None
+    argv = [
+        ffmpeg_path,
+        "-hide_banner",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=size=256x256:rate=30:duration=0.2",
+        "-frames:v",
+        "1",
+        "-c:v",
+        codec,
+        "-f",
+        "null",
+        "-",
+    ]
+    try:
+        run_command(argv, timeout=30)
+    except AppError as exc:
+        return str(exc)
+    return None
 
 
 def build_ffmpeg_command(
@@ -183,10 +211,23 @@ def build_ffmpeg_command(
 
 def render_clip(source_path: Path, output_path: Path, clip: ClipCandidate, edit_plan: EditPlan, config: Settings, ass_path: Path | None = None, badge_path: Path | None = None) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    primary = build_ffmpeg_command(source_path, output_path, clip, edit_plan, config, ass_path=ass_path, badge_path=badge_path)
+    primary_codec = config.render.video_codec
+    primary_error = _probe_encoder(config.paths.ffmpeg_path, primary_codec)
+    if primary_error is not None and config.render.require_gpu:
+        raise AppError(f"{primary_codec} unavailable: {primary_error}")
+    if primary_error is None:
+        primary = build_ffmpeg_command(source_path, output_path, clip, edit_plan, config, ass_path=ass_path, badge_path=badge_path)
+        try:
+            run_command(primary, timeout=None)
+            return output_path
+        except Exception as exc:
+            primary_error = str(exc)
+            if config.render.require_gpu:
+                raise AppError(f"{primary_codec} failed: {primary_error}") from exc
+
+    fallback = build_ffmpeg_command(source_path, output_path, clip, edit_plan, config, ass_path=ass_path, badge_path=badge_path, codec=config.render.fallback_video_codec)
     try:
-        run_command(primary, timeout=None)
-    except Exception:
-        fallback = build_ffmpeg_command(source_path, output_path, clip, edit_plan, config, ass_path=ass_path, badge_path=badge_path, codec=config.render.fallback_video_codec)
         run_command(fallback, timeout=None)
+    except Exception as exc:
+        raise AppError(f"{primary_codec} failed: {primary_error}\n{config.render.fallback_video_codec} failed: {exc}") from exc
     return output_path

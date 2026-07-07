@@ -47,8 +47,10 @@ def clip_subtitle_segments(transcript: Transcript, start: float, end: float, max
     for segment in transcript.segments:
         if segment.end < start or segment.start > end:
             continue
-        words = [word for word in segment.words if word.end > start + 0.05 and word.start < end - 0.05]
+        words = [word for word in segment.words if word.start >= start + 0.02 and word.end <= end - 0.02]
         if not words:
+            if segment.words:
+                continue
             clipped_start = max(segment.start, start) - start
             clipped_end = min(segment.end, end) - start
             if clipped_end - clipped_start < 0.08:

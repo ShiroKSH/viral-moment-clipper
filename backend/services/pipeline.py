@@ -23,7 +23,7 @@ from backend.services.semantic_analyzer import find_interesting_moments
 from backend.services.sentence_segmenter import segment_transcript
 from backend.services.subtitles import write_ass, write_clip_srt
 from backend.services.transcript_postprocess import save_transcript
-from backend.services.transcription import transcribe_audio
+from backend.services.transcription import is_synthetic_transcript, transcribe_audio
 
 
 def run_analysis(project_id: str, job_id: str) -> None:
@@ -134,7 +134,7 @@ def run_render(project_id: str, job_id: str, clip_ids: list[str] | None = None) 
             edit_plan_path = output_dir / "metadata" / f"{clip.id}_edit_plan.json"
             caption_path = output_dir / "metadata" / f"{clip.id}_caption.txt"
             render_ass_path: Path | None = None
-            if config.subtitles.enabled:
+            if config.subtitles.enabled and not is_synthetic_transcript(transcript):
                 write_clip_srt(transcript, clip.start, clip.end, srt_path, max_words=config.subtitles.max_words_per_line)
                 write_ass(
                     transcript,
