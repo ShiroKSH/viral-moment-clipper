@@ -14,8 +14,9 @@ transcription:
   engine: "faster-whisper"
   model: "large-v3-turbo"
   language: "ru"
-  device: "cpu"
-  compute_type: "int8"
+  device: "cuda"
+  compute_type: "float16"
+  require_gpu: true
   vad_filter: true
   word_timestamps: true
   whisperx_enabled: false

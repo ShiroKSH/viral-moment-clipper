@@ -28,8 +28,9 @@ class TranscriptionConfig(BaseModel):
     engine: str = "faster-whisper"
     model: str = "large-v3-turbo"
     language: str = "ru"
-    device: str = "cpu"
-    compute_type: str = "int8"
+    device: str = "cuda"
+    compute_type: str = "float16"
+    require_gpu: bool = True
     vad_filter: bool = True
     word_timestamps: bool = True
     whisperx_enabled: bool = False

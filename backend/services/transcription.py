@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import sys
 
 from backend.core.config import Settings
+from backend.core.errors import AppError
 from backend.schemas.transcript import Transcript, TranscriptSegment, TranscriptWord
 
 
@@ -13,6 +16,25 @@ FALLBACK_LINES = [
     "Такой момент может удерживать внимание, потому что он самостоятельный и легко считывается.",
     "Финальная часть звучит как payoff и подходит для короткого вертикального ролика.",
 ]
+
+_DLL_DIRECTORY_HANDLES = []
+_DLL_DIRECTORIES_ADDED: set[str] = set()
+
+
+def _add_nvidia_dll_directories() -> None:
+    if os.name != "nt":
+        return
+    site_packages = Path(sys.prefix) / "Lib" / "site-packages"
+    for relative in ("nvidia/cublas/bin", "nvidia/cudnn/bin", "nvidia/cuda_nvrtc/bin"):
+        dll_dir = site_packages / relative
+        if not dll_dir.exists():
+            continue
+        dll_dir_text = str(dll_dir)
+        if dll_dir_text not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = dll_dir_text + os.pathsep + os.environ.get("PATH", "")
+        if hasattr(os, "add_dll_directory") and dll_dir_text not in _DLL_DIRECTORIES_ADDED:
+            _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(dll_dir_text))
+            _DLL_DIRECTORIES_ADDED.add(dll_dir_text)
 
 
 def _fallback_transcript(duration: float, language: str) -> Transcript:
@@ -43,6 +65,7 @@ def is_synthetic_transcript(transcript: Transcript) -> bool:
 
 
 def _transcribe_with_faster_whisper(audio_path: Path, config: Settings, device: str, compute_type: str) -> Transcript:
+    _add_nvidia_dll_directories()
     from faster_whisper import WhisperModel
 
     model = WhisperModel(config.transcription.model, device=device, compute_type=compute_type)
@@ -88,15 +111,20 @@ def transcribe_audio(audio_path: Path, config: Settings, duration: float = 0) ->
         return _fallback_transcript(duration, config.transcription.language)
 
     attempts = [(config.transcription.device, config.transcription.compute_type)]
-    if (config.transcription.device, config.transcription.compute_type) != ("cpu", "int8"):
+    if not config.transcription.require_gpu and (config.transcription.device, config.transcription.compute_type) != ("cpu", "int8"):
         attempts.append(("cpu", "int8"))
 
+    errors: list[str] = []
     for device, compute_type in attempts:
         try:
             transcript = _transcribe_with_faster_whisper(audio_path, config, device, compute_type)
             transcript.duration = duration or transcript.duration
             return transcript
-        except Exception:
+        except Exception as exc:
+            errors.append(f"{device}/{compute_type}: {exc}")
             continue
+
+    if config.transcription.require_gpu:
+        raise AppError("GPU transcription failed: " + " | ".join(errors))
 
     return _fallback_transcript(duration, config.transcription.language)
