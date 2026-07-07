@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from backend.core.config import Settings
+from backend.schemas.transcript import Transcript, TranscriptSegment, TranscriptWord
+
+
+FALLBACK_LINES = [
+    "В этом фрагменте есть важная мысль, которую можно превратить в короткий клип.",
+    "Сначала появляется сильный hook, затем автор объясняет проблему простыми словами.",
+    "Дальше есть контраст, личный опыт и понятный вывод для зрителя.",
+    "Такой момент может удерживать внимание, потому что он самостоятельный и легко считывается.",
+    "Финальная часть звучит как payoff и подходит для короткого вертикального ролика.",
+]
+
+
+def _fallback_transcript(duration: float, language: str) -> Transcript:
+    if duration <= 0:
+        duration = 150
+    segment_length = max(8.0, min(22.0, duration / max(5, len(FALLBACK_LINES))))
+    segments: list[TranscriptSegment] = []
+    cursor = 0.0
+    index = 0
+    while cursor < duration and index < 25:
+        text = FALLBACK_LINES[index % len(FALLBACK_LINES)]
+        start = cursor
+        end = min(duration, start + segment_length)
+        words_raw = text.split()
+        word_duration = max(0.15, (end - start) / max(1, len(words_raw)))
+        words = [
+            TranscriptWord(word=word, start=start + i * word_duration, end=min(end, start + (i + 1) * word_duration), probability=None)
+            for i, word in enumerate(words_raw)
+        ]
+        segments.append(TranscriptSegment(id=index + 1, start=start, end=end, text=text, words=words))
+        cursor = end + 0.35
+        index += 1
+    return Transcript(language=language, duration=duration, engine="fallback", segments=segments, text=" ".join(s.text for s in segments))
+
+
+def transcribe_audio(audio_path: Path, config: Settings, duration: float = 0) -> Transcript:
+    if config.transcription.engine == "fallback":
+        return _fallback_transcript(duration, config.transcription.language)
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return _fallback_transcript(duration, config.transcription.language)
+
+    try:
+        model = WhisperModel(config.transcription.model, device=config.transcription.device, compute_type=config.transcription.compute_type)
+        segments_iter, info = model.transcribe(
+            str(audio_path),
+            language=config.transcription.language or None,
+            vad_filter=config.transcription.vad_filter,
+            word_timestamps=config.transcription.word_timestamps,
+        )
+        segments: list[TranscriptSegment] = []
+        for idx, segment in enumerate(segments_iter, start=1):
+            words = [
+                TranscriptWord(
+                    word=word.word.strip(),
+                    start=float(word.start or segment.start),
+                    end=float(word.end or segment.end),
+                    probability=word.probability,
+                )
+                for word in (segment.words or [])
+                if word.word and word.word.strip()
+            ]
+            segments.append(
+                TranscriptSegment(
+                    id=idx,
+                    start=float(segment.start),
+                    end=float(segment.end),
+                    text=segment.text.strip(),
+                    words=words,
+                )
+            )
+        text = " ".join(segment.text for segment in segments)
+        return Transcript(language=info.language or config.transcription.language, duration=duration or info.duration, engine="faster-whisper", segments=segments, text=text)
+    except Exception:
+        return _fallback_transcript(duration, config.transcription.language)

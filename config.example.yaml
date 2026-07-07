@@ -1,0 +1,93 @@
+app:
+  host: "127.0.0.1"
+  port: 7878
+  open_browser_on_start: true
+
+paths:
+  ffmpeg_path: "ffmpeg"
+  ffprobe_path: "ffprobe"
+  output_dir: "./output"
+  temp_dir: "./temp"
+  models_dir: "./models"
+
+transcription:
+  engine: "faster-whisper"
+  model: "large-v3-turbo"
+  language: "ru"
+  device: "cuda"
+  compute_type: "float16"
+  vad_filter: true
+  word_timestamps: true
+  whisperx_enabled: false
+
+local_llm:
+  enabled: true
+  provider: "ollama"
+  base_url: "http://127.0.0.1:11434"
+  model: "qwen2.5:7b-instruct"
+  timeout_sec: 120
+  max_window_sec: 120
+  overlap_sec: 20
+  strict_json: true
+  fallback_to_heuristics: true
+
+clips:
+  target_count: 15
+  min_duration_sec: 18
+  max_duration_sec: 58
+  preferred_duration_sec: 35
+  avoid_cutting_sentences: true
+  pad_before_sec: 0.35
+  pad_after_sec: 0.45
+  min_score: 60
+
+render:
+  width: 1080
+  height: 1920
+  fps: 30
+  video_codec: "h264_nvenc"
+  fallback_video_codec: "libx264"
+  audio_codec: "aac"
+  audio_bitrate: "192k"
+  video_bitrate: "12M"
+  mode: "blurred_background"
+
+branding:
+  handle: "@my_youtube_nick"
+  show_badge: true
+  badge_position: "bottom_center"
+  badge_text: "@my_youtube_nick"
+  badge_width: 620
+  badge_safe_bottom_px: 235
+  opacity: 0.86
+
+subtitles:
+  enabled: true
+  style: "organic_bold"
+  max_words_per_line: 3
+  max_lines: 2
+  font_size: 74
+  uppercase_keywords: true
+  highlight_current_word: true
+  safe_bottom_margin_px: 430
+
+dynamic_edit:
+  enabled: true
+  profile: "banger"
+  remove_silence: true
+  max_pause_sec: 0.65
+  punch_zoom_enabled: true
+  max_punch_zoom_per_10_sec: 3
+  pattern_interrupt_every_sec: 3.2
+  hook_title_enabled: true
+  progress_bar_enabled: true
+  keyword_emphasis_enabled: true
+  audio_normalization_enabled: true
+
+learning:
+  enabled: true
+  min_feedback_before_training: 30
+  min_metrics_before_training: 15
+  exploration_rate: 0.12
+  personal_score_weight: 0.35
+  save_training_rows: true

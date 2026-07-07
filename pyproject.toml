@@ -1,0 +1,10 @@
+[project]
+name = "viral-moment-clipper"
+version = "0.1.0"
+description = "Local Windows app for finding and rendering potentially interesting vertical clips."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
