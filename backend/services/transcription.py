@@ -7,6 +7,7 @@ import sys
 from backend.core.config import Settings
 from backend.core.errors import AppError
 from backend.schemas.transcript import Transcript, TranscriptSegment, TranscriptWord
+from backend.services.transcript_postprocess import repair_transcript_text
 
 
 FALLBACK_LINES = [
@@ -83,6 +84,7 @@ def _transcribe_with_faster_whisper(audio_path: Path, config: Settings, device: 
                 start=float(word.start or segment.start),
                 end=float(word.end or segment.end),
                 probability=word.probability,
+                speaker=getattr(word, "speaker", None),
             )
             for word in (segment.words or [])
             if word.word and word.word.strip()
@@ -93,6 +95,7 @@ def _transcribe_with_faster_whisper(audio_path: Path, config: Settings, device: 
                 start=float(segment.start),
                 end=float(segment.end),
                 text=segment.text.strip(),
+                speaker=getattr(segment, "speaker", None),
                 words=words,
             )
         )
@@ -110,15 +113,19 @@ def transcribe_audio(audio_path: Path, config: Settings, duration: float = 0) ->
     if config.transcription.engine == "fallback":
         return _fallback_transcript(duration, config.transcription.language)
 
-    attempts = [(config.transcription.device, config.transcription.compute_type)]
-    if not config.transcription.require_gpu and (config.transcription.device, config.transcription.compute_type) != ("cpu", "int8"):
-        attempts.append(("cpu", "int8"))
+    attempts: list[tuple[str, str, bool]] = [(config.transcription.device, config.transcription.compute_type, False)]
+    primary_is_cpu = config.transcription.device == "cpu"
+    if config.transcription.cpu_fallback and not config.transcription.require_gpu and not primary_is_cpu:
+        attempts.append(("cpu", config.transcription.fallback_compute_type, True))
 
     errors: list[str] = []
-    for device, compute_type in attempts:
+    for device, compute_type, is_fallback in attempts:
         try:
             transcript = _transcribe_with_faster_whisper(audio_path, config, device, compute_type)
             transcript.duration = duration or transcript.duration
+            if is_fallback:
+                transcript.engine = f"{transcript.engine}:fallback"
+            repair_transcript_text(transcript)
             return transcript
         except Exception as exc:
             errors.append(f"{device}/{compute_type}: {exc}")
@@ -126,5 +133,9 @@ def transcribe_audio(audio_path: Path, config: Settings, duration: float = 0) ->
 
     if config.transcription.require_gpu:
         raise AppError("GPU transcription failed: " + " | ".join(errors))
+    if not config.transcription.allow_synthetic_fallback:
+        raise AppError("Transcription failed: " + " | ".join(errors))
 
-    return _fallback_transcript(duration, config.transcription.language)
+    transcript = _fallback_transcript(duration, config.transcription.language)
+    repair_transcript_text(transcript)
+    return transcript

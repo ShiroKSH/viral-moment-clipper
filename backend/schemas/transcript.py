@@ -8,6 +8,7 @@ class TranscriptWord(BaseModel):
     start: float
     end: float
     probability: float | None = None
+    speaker: str | None = None
 
 
 class TranscriptSegment(BaseModel):
@@ -15,6 +16,7 @@ class TranscriptSegment(BaseModel):
     start: float
     end: float
     text: str
+    speaker: str | None = None
     words: list[TranscriptWord] = Field(default_factory=list)
 
 
@@ -22,5 +24,8 @@ class Transcript(BaseModel):
     language: str = "ru"
     duration: float = 0
     engine: str = "fallback"
+    speaker_model_version: str | None = None
+    speaker_backend: str | None = None
+    speaker_coverage: float = 0.0
     segments: list[TranscriptSegment] = Field(default_factory=list)
     text: str = ""

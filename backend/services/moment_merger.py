@@ -3,22 +3,18 @@ from __future__ import annotations
 from backend.schemas.moments import InterestingMoment
 
 
-def merge_overlapping_moments(moments: list[InterestingMoment], overlap_tolerance: float = 8.0) -> list[InterestingMoment]:
+def _overlap_ratio(left: InterestingMoment, right: InterestingMoment) -> float:
+    overlap = max(0.0, min(left.end, right.end) - max(left.start, right.start))
+    return overlap / max(0.001, min(left.duration, right.duration))
+
+
+def merge_overlapping_moments(moments: list[InterestingMoment], overlap_tolerance: float = 0.55) -> list[InterestingMoment]:
     if not moments:
         return []
-    ordered = sorted(moments, key=lambda item: (item.start, -item.final_score))
-    merged: list[InterestingMoment] = []
+    ordered = sorted(moments, key=lambda item: item.final_score, reverse=True)
+    selected: list[InterestingMoment] = []
     for moment in ordered:
-        if not merged or moment.start > merged[-1].end - overlap_tolerance:
-            merged.append(moment)
+        if any(_overlap_ratio(moment, existing) >= overlap_tolerance for existing in selected):
             continue
-        current = merged[-1]
-        if moment.final_score > current.final_score:
-            moment.start = min(current.start, moment.start)
-            moment.end = max(current.end, moment.end)
-            moment.duration = round(moment.end - moment.start, 2)
-            merged[-1] = moment
-        else:
-            current.end = max(current.end, moment.end)
-            current.duration = round(current.end - current.start, 2)
-    return sorted(merged, key=lambda item: item.final_score, reverse=True)
+        selected.append(moment)
+    return selected

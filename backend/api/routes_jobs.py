@@ -1,8 +1,18 @@
 from fastapi import APIRouter, HTTPException
 
-from backend.services.jobs import cancel_job, get_job
+from backend.services.jobs import cancel_job, get_job, latest_project_job, list_jobs
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+@router.get("")
+def read_jobs(project_id: str | None = None, latest: bool = False, active_only: bool = False) -> list[dict] | dict | None:
+    if latest:
+        if not project_id:
+            raise HTTPException(status_code=422, detail="project_id is required for latest job lookup")
+        job = latest_project_job(project_id, active_only=active_only)
+        return job.model_dump() if job else None
+    return [job.model_dump() for job in list_jobs(project_id, active_only=active_only)]
 
 
 @router.get("/{job_id}")

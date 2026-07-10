@@ -8,15 +8,16 @@ type Props = {
   onAccept: (clipId: string) => void;
   onReject: (clipId: string) => void;
   onRender: () => void;
+  busy?: boolean;
 };
 
-export default function ClipCandidates({ clips, onPatch, onAccept, onReject, onRender }: Props) {
+export default function ClipCandidates({ clips, onPatch, onAccept, onReject, onRender, busy = false }: Props) {
   const selectedCount = clips.filter((clip) => clip.selected).length;
   return (
     <section className="panel candidates-panel">
       <div className="panel-title">
         <h2>Candidates</h2>
-        <button className="icon-button" type="button" disabled={!selectedCount} onClick={onRender} aria-label="Render selected clips">
+        <button className="icon-button" type="button" disabled={busy || !selectedCount} onClick={onRender} aria-label="Render selected clips">
           <Scissors size={16} /> Render {selectedCount}
         </button>
       </div>

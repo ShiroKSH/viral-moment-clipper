@@ -15,6 +15,10 @@ export type Project = {
   source_path?: string | null;
   output_dir: string;
   created_at: string;
+  uploaded_at?: string | null;
+  analyzed_at?: string | null;
+  rendered_at?: string | null;
+  last_activity_at?: string | null;
   status: string;
   video?: VideoMetadata | null;
 };
@@ -41,6 +45,9 @@ export type ClipCandidate = {
   final_score: number;
   base_score: number;
   personal_score: number;
+  speaker_count: number;
+  speaker_switches: number;
+  dialogue_score: number;
   moment_type: string;
   hook_text: string;
   summary: string;
@@ -51,6 +58,8 @@ export type ClipCandidate = {
   suggested_caption: string;
   edit_profile: string;
   latest_feedback_action?: string | null;
+  review_action?: string | null;
+  boundaries_edited?: boolean;
   output_path?: string | null;
   metadata_path?: string | null;
 };
@@ -59,6 +68,7 @@ export type AnalysisState = {
   project: Project;
   clips: ClipCandidate[];
   transcript_preview: string;
+  speaker_summary?: string;
 };
 
 export type LearningSummary = {
@@ -70,5 +80,15 @@ export type LearningSummary = {
   metrics_entered: number;
   active_ranker_version: string;
   training_ready: boolean;
+  model_active?: boolean;
+  training_rows?: number;
+  positive_count?: number;
+  negative_count?: number;
+  balanced?: boolean;
+  retention?: {
+    samples_with_retention: number;
+    average_retention_percent: number;
+    median_retention_percent: number;
+  };
   preferred_types: string[];
 };

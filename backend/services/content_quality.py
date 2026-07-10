@@ -5,31 +5,63 @@ import re
 from backend.schemas.moments import InterestingMoment
 
 
-AD_OR_CTA_PATTERNS = (
+PROMO_DISCLOSURE_PATTERNS = (
     "реклама",
     "спонсор",
-    "промокод",
-    "скидк",
-    "купить",
-    "заказать",
-    "магазин",
     "партнер",
     "интеграция",
+    "sponsor",
+)
+
+PROMO_CTA_PATTERNS = (
+    "промокод",
     "ссылка в описании",
     "переходи по ссылке",
     "подпиш",
-    "лайк",
-    "колокольчик",
-    "телеграм",
+    "promo code",
+    "subscribe",
+    "скачивай ",
+    "установи ",
+    "регистрируйся",
+    "зарегистрируйся",
+    "попробуй бесплатно",
     "boosty",
     "бусти",
     "donate",
     "донат",
-    "sponsor",
-    "promo code",
-    "discount",
-    "subscribe",
 )
+
+PROMO_OFFER_PATTERNS = (
+    "скидк",
+    "кэшбэк",
+    "призовой фонд",
+    "миллион рублей",
+    "бесплатн",
+    "discount",
+)
+
+PROMO_URGENCY_PATTERNS = (
+    "успей до ",
+    "только до ",
+    "ограниченн",
+    "пропадает с каждым",
+    "потом эта штука исчезнет",
+)
+
+PROMO_CONTEXT_PATTERNS = (
+    "в новом обновлении",
+    "редкий легендарный дроп",
+    "шанс получить",
+    "одного из ста",
+    "сражайся с ",
+    "буст к скорости",
+    "получи возможность",
+    "в событии участвует",
+    "событии также участвует",
+    "начинай охоту",
+)
+
+LATIN_BRAND_RE = re.compile(r"\b[A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+)+\b")
 
 GENERIC_CLIP_PATTERNS = (
     "в этом фрагменте есть",
@@ -60,16 +92,94 @@ QUALITY_PROBLEMS = {
 
 
 def repair_mojibake(text: str) -> str:
-    if "Ð" not in text and "Ñ" not in text:
+    if not text:
         return text
-    try:
-        return text.encode("latin1").decode("utf-8")
-    except UnicodeError:
-        return text
+    candidates = [text]
+    for encoding in ("cp1251", "latin1"):
+        try:
+            candidates.append(text.encode(encoding).decode("utf-8"))
+        except UnicodeError:
+            pass
+    return min(candidates, key=_mojibake_score)
+
+
+def _mojibake_score(text: str) -> int:
+    markers = (
+        "Ð",
+        "Ñ",
+        "Рџ",
+        "Рђ",
+        "Р‘",
+        "Р“",
+        "Р”",
+        "Р•",
+        "Р°",
+        "Р±",
+        "РІ",
+        "Рі",
+        "Рґ",
+        "Рµ",
+        "Рё",
+        "Р№",
+        "Рє",
+        "Р»",
+        "Рј",
+        "РЅ",
+        "Рѕ",
+        "Рї",
+        "СЂ",
+        "СЃ",
+        "С‚",
+        "Сѓ",
+        "С„",
+        "С…",
+        "С†",
+        "С‡",
+        "С€",
+        "С‹",
+        "СЊ",
+        "СЌ",
+        "СЋ",
+        "СЏ",
+        "С‘",
+        "Р¶",
+        "Гђ",
+        "Г‘",
+    )
+    return text.count("�") * 20 + sum(text.count(marker) * 3 for marker in markers)
 
 
 def normalize_quality_text(text: str) -> str:
     return " ".join(repair_mojibake(text).lower().replace("ё", "е").split())
+
+
+def commercial_evidence(text: str) -> set[str]:
+    repaired = repair_mojibake(text)
+    normalized = normalize_quality_text(repaired)
+    evidence: set[str] = set()
+    if any(pattern in normalized for pattern in PROMO_DISCLOSURE_PATTERNS):
+        evidence.add("disclosure")
+    if any(pattern in normalized for pattern in PROMO_CTA_PATTERNS) or (
+        "ссыл" in normalized and "в описани" in normalized
+    ):
+        evidence.add("cta")
+    if any(pattern in normalized for pattern in PROMO_OFFER_PATTERNS):
+        evidence.add("offer")
+    if any(pattern in normalized for pattern in PROMO_URGENCY_PATTERNS):
+        evidence.add("urgency")
+    if any(pattern in normalized for pattern in PROMO_CONTEXT_PATTERNS):
+        evidence.add("context")
+    if LATIN_BRAND_RE.search(repaired):
+        evidence.add("brand")
+    return evidence
+
+
+def is_commercial_language(evidence: set[str]) -> bool:
+    return bool(
+        evidence & {"disclosure", "cta"}
+        or {"offer", "urgency"}.issubset(evidence)
+        or {"brand", "offer", "context"}.issubset(evidence)
+    )
 
 
 def quality_penalty(text: str) -> tuple[float, list[str]]:
@@ -78,11 +188,11 @@ def quality_penalty(text: str) -> tuple[float, list[str]]:
         return 35, ["empty text"]
     problems: list[str] = []
     penalty = 0.0
-    ad_hits = [pattern for pattern in AD_OR_CTA_PATTERNS if pattern in normalized]
+    commercial = commercial_evidence(text)
     generic_hits = [pattern for pattern in GENERIC_CLIP_PATTERNS if pattern in normalized]
     low_info_hits = [pattern for pattern in LOW_INFORMATION_PATTERNS if pattern in normalized]
-    if ad_hits:
-        penalty += min(70, 28 + len(ad_hits) * 12)
+    if is_commercial_language(commercial):
+        penalty += min(70, 28 + len(commercial) * 12)
         problems.append("ad or CTA language")
     if generic_hits:
         penalty += min(60, 34 + len(generic_hits) * 8)

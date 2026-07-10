@@ -26,6 +26,10 @@ class Project(BaseModel):
     source_path: str | None = None
     output_dir: str
     created_at: str
+    uploaded_at: str | None = None
+    analyzed_at: str | None = None
+    rendered_at: str | None = None
+    last_activity_at: str | None = None
     status: str
     video: VideoMetadata | None = None
 

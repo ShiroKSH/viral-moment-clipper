@@ -9,6 +9,7 @@ from backend.schemas.jobs import JobRecord, JobStatus
 
 _jobs: dict[str, JobRecord] = {}
 _lock = Lock()
+_ACTIVE_STATUSES = {JobStatus.queued, JobStatus.running}
 
 
 def create_job(project_id: str | None = None) -> JobRecord:
@@ -21,6 +22,25 @@ def create_job(project_id: str | None = None) -> JobRecord:
 def get_job(job_id: str) -> JobRecord | None:
     with _lock:
         return _jobs.get(job_id)
+
+
+def list_jobs(project_id: str | None = None, *, active_only: bool = False) -> list[JobRecord]:
+    with _lock:
+        jobs = list(_jobs.values())
+    if project_id is not None:
+        jobs = [job for job in jobs if job.project_id == project_id]
+    if active_only:
+        jobs = [job for job in jobs if job.status in _ACTIVE_STATUSES]
+    return sorted(jobs, key=lambda job: job.started_at or "", reverse=True)
+
+
+def latest_project_job(project_id: str, *, active_only: bool = False) -> JobRecord | None:
+    jobs = list_jobs(project_id, active_only=active_only)
+    return jobs[0] if jobs else None
+
+
+def get_active_project_job(project_id: str) -> JobRecord | None:
+    return latest_project_job(project_id, active_only=True)
 
 
 def update_job(job_id: str, *, status: JobStatus | None = None, stage: str | None = None, progress: float | None = None, message: str | None = None, log: str | None = None, error: str | None = None) -> JobRecord:

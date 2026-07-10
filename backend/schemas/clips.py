@@ -14,6 +14,9 @@ class ClipCandidate(BaseModel):
     final_score: float
     base_score: float = 0
     personal_score: float = 0
+    speaker_count: int = 0
+    speaker_switches: int = 0
+    dialogue_score: float = 0
     moment_type: str
     hook_text: str
     summary: str
@@ -24,6 +27,8 @@ class ClipCandidate(BaseModel):
     suggested_caption: str
     edit_profile: str = "balanced"
     latest_feedback_action: str | None = None
+    review_action: str | None = None
+    boundaries_edited: bool = False
     output_path: str | None = None
     metadata_path: str | None = None
 

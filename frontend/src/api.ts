@@ -39,6 +39,18 @@ export function listProjects() {
   return request<Project[]>('/projects');
 }
 
+export function deleteProject(projectId: string) {
+  return request<{ deleted: Project }>(`/projects/${projectId}`, { method: 'DELETE' });
+}
+
+export function cleanupProjects(keepProjectId: string) {
+  return request<{ deleted: Project[]; projects: Project[] }>('/projects/cleanup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keep_project_id: keepProjectId, remove_files: true }),
+  });
+}
+
 export function uploadVideo(projectId: string, file: File) {
   const body = new FormData();
   body.append('file', file);
@@ -55,6 +67,12 @@ export function getAnalysis(projectId: string) {
 
 export function getJob(jobId: string) {
   return request<JobRecord>(`/jobs/${jobId}`);
+}
+
+export function getLatestProjectJob(projectId: string, activeOnly = false) {
+  const params = new URLSearchParams({ project_id: projectId, latest: 'true' });
+  if (activeOnly) params.set('active_only', 'true');
+  return request<JobRecord | null>(`/jobs?${params.toString()}`);
 }
 
 export function updateClip(projectId: string, clipId: string, patch: Partial<Pick<ClipCandidate, 'start' | 'end' | 'selected' | 'edit_profile'>>) {

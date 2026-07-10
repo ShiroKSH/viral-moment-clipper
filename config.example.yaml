@@ -16,7 +16,10 @@ transcription:
   language: "ru"
   device: "cuda"
   compute_type: "float16"
-  require_gpu: true
+  require_gpu: false
+  cpu_fallback: true
+  fallback_compute_type: "int8"
+  allow_synthetic_fallback: false
   vad_filter: true
   word_timestamps: true
   whisperx_enabled: false
@@ -31,16 +34,22 @@ local_llm:
   overlap_sec: 20
   strict_json: true
   fallback_to_heuristics: true
+  temperature: 0.15
+  seed: 7
 
 clips:
-  target_count: 15
+  target_count: 8
   min_duration_sec: 18
-  max_duration_sec: 58
-  preferred_duration_sec: 35
+  max_duration_sec: 48
+  preferred_duration_sec: 28
   avoid_cutting_sentences: true
+  ending_strategy: "complete_sentence"
+  cliffhanger_min_duration_sec: 14
+  cliffhanger_max_duration_sec: 28
+  cliffhanger_preferred_duration_sec: 21
   pad_before_sec: 0.35
   pad_after_sec: 0.45
-  min_score: 60
+  min_score: 70
 
 render:
   width: 1080
@@ -48,7 +57,11 @@ render:
   fps: 30
   video_codec: "h264_nvenc"
   fallback_video_codec: "libx264"
-  require_gpu: true
+  require_gpu: false
+  hwaccel: "cuda"
+  gpu_filters: true
+  nvenc_preset: "p5"
+  nvenc_cq: 19
   audio_codec: "aac"
   audio_bitrate: "192k"
   video_bitrate: "12M"
@@ -59,37 +72,54 @@ branding:
   show_badge: true
   badge_position: "bottom_center"
   badge_text: "@my_youtube_nick"
-  badge_width: 620
-  badge_safe_bottom_px: 235
-  opacity: 0.86
+  badge_width: 520
+  badge_safe_bottom_px: 250
+  opacity: 0.72
 
 subtitles:
   enabled: true
-  style: "organic_bold"
   max_words_per_line: 3
-  max_lines: 2
-  font_size: 74
-  uppercase_keywords: true
+  font_size: 68
   highlight_current_word: true
+  speaker_colors_enabled: true
+  speaker_labels_enabled: false
   safe_bottom_margin_px: 430
+
+speakers:
+  enabled: true
+  embedding_backend: "local"
+  neural_model: "speechbrain/spkrec-ecapa-voxceleb"
+  max_speakers: 4
+  min_segment_sec: 0.6
+  distance_threshold: 0.22
 
 dynamic_edit:
   enabled: true
-  profile: "banger"
-  remove_silence: true
+  profile: "story"
   max_pause_sec: 0.65
   punch_zoom_enabled: true
   max_punch_zoom_per_10_sec: 3
-  pattern_interrupt_every_sec: 3.2
+  pattern_interrupt_every_sec: 3.6
+  scene_detection_enabled: true
+  scene_threshold: 0.10
+  scene_guard_sec: 0.90
   hook_title_enabled: false
-  progress_bar_enabled: true
-  keyword_emphasis_enabled: true
+  progress_bar_enabled: false
   audio_normalization_enabled: true
+
+end_card:
+  enabled: true
+  duration_sec: 1.0
+  headline: "Продолжение на YouTube"
+  subheadline: ""
+  channel_text: "@my_youtube_nick"
+  sound_enabled: true
+  sound_volume: 0.30
 
 learning:
   enabled: true
-  min_feedback_before_training: 30
-  min_metrics_before_training: 15
+  min_feedback_before_training: 12
+  min_metrics_before_training: 8
   exploration_rate: 0.12
   personal_score_weight: 0.35
   save_training_rows: true

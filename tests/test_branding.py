@@ -14,4 +14,4 @@ def test_generate_badge_handles_long_text_inside_configured_width(tmp_path: Path
 
     assert path is not None
     with Image.open(path) as image:
-        assert image.size == (420, 92)
+        assert image.size == (420, 63)

@@ -18,14 +18,38 @@ def _fps(value: str | None) -> float:
         return 0
 
 
+def _duration(value: object) -> float:
+    try:
+        return max(0.0, float(value or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _primary_video_stream(streams: list[dict]) -> dict:
+    return next(
+        (
+            stream
+            for stream in streams
+            if stream.get("codec_type") == "video" and not stream.get("disposition", {}).get("attached_pic")
+        ),
+        {},
+    )
+
+
+def playable_duration(raw: dict) -> float:
+    streams = raw.get("streams", [])
+    video = _primary_video_stream(streams)
+    audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), {})
+    return _duration(video.get("duration")) or _duration(raw.get("format", {}).get("duration")) or _duration(audio.get("duration"))
+
+
 def probe_video(path: Path, config: Settings) -> VideoMetadata:
     raw = ffprobe_json(config.paths.ffprobe_path, path)
     streams = raw.get("streams", [])
-    video = next((stream for stream in streams if stream.get("codec_type") == "video"), {})
+    video = _primary_video_stream(streams)
     audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), {})
-    duration = float(raw.get("format", {}).get("duration") or video.get("duration") or 0)
     return VideoMetadata(
-        duration=duration,
+        duration=playable_duration(raw),
         width=int(video.get("width") or 0),
         height=int(video.get("height") or 0),
         fps=_fps(video.get("avg_frame_rate") or video.get("r_frame_rate")),

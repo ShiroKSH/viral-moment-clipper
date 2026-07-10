@@ -10,6 +10,8 @@ type Props = {
 };
 
 export default function ClipCard({ clip, onPatch, onAccept, onReject }: Props) {
+  const accepted = clip.review_action === 'accept';
+  const rejected = clip.review_action === 'reject';
   return (
     <article className="clip-card">
       <header className="clip-head">
@@ -26,7 +28,11 @@ export default function ClipCard({ clip, onPatch, onAccept, onReject }: Props) {
         <span>base {Math.round(clip.base_score)}</span>
         <span>personal {Math.round(clip.personal_score)}</span>
         <span>{clip.duration.toFixed(1)}s</span>
-        {clip.latest_feedback_action ? <span className={`feedback-pill ${clip.latest_feedback_action}`}>{clip.latest_feedback_action}</span> : null}
+        {clip.speaker_count > 1 ? <span className="feedback-pill edited">{clip.speaker_count} speakers · {clip.speaker_switches} turns</span> : null}
+        {clip.review_action ? <span className={`feedback-pill ${clip.review_action}`}>{clip.review_action}</span> : null}
+        {clip.latest_feedback_action && clip.latest_feedback_action !== clip.review_action && clip.latest_feedback_action !== 'rendered' ? (
+          <span className={`feedback-pill ${clip.latest_feedback_action}`}>{clip.latest_feedback_action}</span>
+        ) : null}
         {clip.rendered ? <span className="rendered-pill">rendered</span> : null}
       </div>
       <h3>{clip.hook_text}</h3>
@@ -39,11 +45,11 @@ export default function ClipCard({ clip, onPatch, onAccept, onReject }: Props) {
         <p className="transcript-text">{clip.text}</p>
       </details>
       <footer className="clip-actions">
-        <button type="button" className="icon-button" onClick={() => onAccept(clip.id)} aria-label={`Accept ${clip.id}`}>
-          <Check size={16} /> {clip.latest_feedback_action === 'accept' ? 'Accepted' : 'Accept'}
+        <button type="button" className="icon-button" disabled={accepted} onClick={() => onAccept(clip.id)} aria-label={`Accept ${clip.id}`}>
+          <Check size={16} /> {accepted ? 'Accepted' : 'Accept'}
         </button>
-        <button type="button" className="icon-button secondary" onClick={() => onReject(clip.id)} aria-label={`Reject ${clip.id}`}>
-          <X size={16} /> {clip.latest_feedback_action === 'reject' ? 'Rejected' : 'Reject'}
+        <button type="button" className="icon-button secondary" disabled={rejected} onClick={() => onReject(clip.id)} aria-label={`Reject ${clip.id}`}>
+          <X size={16} /> {rejected ? 'Rejected' : 'Reject'}
         </button>
       </footer>
     </article>

@@ -15,6 +15,14 @@ def _segment(index: int, start: float, text: str) -> TranscriptSegment:
     )
 
 
+def _speaker_segment(index: int, start: float, text: str, speaker: str) -> TranscriptSegment:
+    segment = _segment(index, start, text)
+    segment.speaker = speaker
+    for word in segment.words:
+        word.speaker = speaker
+    return segment
+
+
 def test_semantic_analyzer_finds_interesting_moments_and_filters_ads():
     transcript = Transcript(
         duration=84,
@@ -37,3 +45,27 @@ def test_semantic_analyzer_finds_interesting_moments_and_filters_ads():
     joined = " ".join(moment.text.lower() for moment in moments)
     assert "промокод" not in joined
     assert "можно превратить в короткий клип" not in joined
+
+
+def test_semantic_analyzer_boosts_multi_speaker_dialogue():
+    transcript = Transcript(
+        duration=48,
+        segments=[
+            _speaker_segment(1, 0, "What happened here?", "S1"),
+            _speaker_segment(2, 12, "I think the monster changed the rule.", "S2"),
+            _speaker_segment(3, 24, "Why would that be possible?", "S1"),
+            _speaker_segment(4, 36, "Because the evidence is different now.", "S2"),
+        ],
+        text="",
+    )
+    settings = Settings()
+    settings.local_llm.enabled = False
+    settings.clips.min_score = 35
+
+    moments = find_interesting_moments(segment_transcript(transcript), settings)
+
+    assert moments
+    assert moments[0].speaker_count >= 2
+    assert moments[0].dialogue_score > 0
+    assert "Dialogue signal" in moments[0].reason
+    assert moments[0].reason.count("Dialogue signal") == 1

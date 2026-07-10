@@ -8,6 +8,9 @@ class SentenceSegment(BaseModel):
     start: float
     end: float
     text: str
+    speaker: str | None = None
+    speakers: list[str] = Field(default_factory=list)
+    speaker_switches: int = 0
     words: list[dict] = Field(default_factory=list)
 
 
@@ -31,6 +34,9 @@ class InterestingMoment(BaseModel):
     speech_density_score: float = 0
     audio_energy_score: float = 0
     visual_energy_score: float = 0
+    speaker_count: int = 0
+    speaker_switches: int = 0
+    dialogue_score: float = 0
     base_score: float = 0
     personal_score: float = 0
     final_score: float = 0

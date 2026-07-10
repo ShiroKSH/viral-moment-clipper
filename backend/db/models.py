@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS source_videos (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   path TEXT NOT NULL,
+  uploaded_at TEXT,
   duration REAL,
   width INTEGER,
   height INTEGER,
@@ -101,12 +102,15 @@ CREATE TABLE IF NOT EXISTS feedback (
   old_end REAL,
   new_start REAL,
   new_end REAL,
+  features_json TEXT,
   created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS publish_metrics (
   id TEXT PRIMARY KEY,
-  clip_id TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  clip_id TEXT NOT NULL,
+  moment_id TEXT,
   platform TEXT NOT NULL,
   published_url TEXT,
   views INTEGER,

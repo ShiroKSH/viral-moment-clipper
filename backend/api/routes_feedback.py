@@ -8,6 +8,7 @@ from backend.services import project_store
 from backend.services.learning.feedback_store import store_feedback
 from backend.services.learning.metrics_import import store_metrics
 from backend.services.learning.model_registry import active_model_summary
+from backend.services.learning.training import maybe_train_personal_ranker, train_personal_ranker
 
 router = APIRouter(prefix="/api", tags=["feedback"])
 
@@ -25,18 +26,41 @@ def add_feedback(clip_id: str, payload: FeedbackRequest) -> dict:
 @router.post("/clips/{clip_id}/metrics")
 def add_metrics(clip_id: str, payload: MetricsRequest) -> dict:
     with get_connection() as connection:
-        row = connection.execute("SELECT id FROM clips WHERE id = ?", (clip_id,)).fetchone()
+        row = connection.execute("SELECT project_id, moment_id FROM clips WHERE id = ?", (clip_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Clip not found")
-    return {"id": store_metrics(clip_id, payload)}
+    metrics_id = store_metrics(clip_id, payload, project_id=row["project_id"], moment_id=row["moment_id"])
+    try:
+        training = maybe_train_personal_ranker()
+    except Exception:
+        training = {"trained": False, "message": "Metrics saved; local model refresh will retry later."}
+    return {"id": metrics_id, "training": training}
 
 
 @router.get("/learning/summary")
 def learning_summary() -> dict:
     with get_connection() as connection:
         total_clips = connection.execute("SELECT COUNT(*) AS count FROM clips").fetchone()["count"]
-        accepted = connection.execute("SELECT COUNT(*) AS count FROM feedback WHERE action = 'accept'").fetchone()["count"]
-        rejected = connection.execute("SELECT COUNT(*) AS count FROM feedback WHERE action = 'reject'").fetchone()["count"]
+        decisions = connection.execute(
+            """
+            WITH latest_decisions AS (
+              SELECT action,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY COALESCE(moment_id, clip_id)
+                       ORDER BY created_at DESC, id DESC
+                     ) AS row_number
+              FROM feedback
+              WHERE action IN ('accept', 'reject')
+            )
+            SELECT
+              SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) AS accepted,
+              SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected
+            FROM latest_decisions
+            WHERE row_number = 1
+            """
+        ).fetchone()
+        accepted = decisions["accepted"] or 0
+        rejected = decisions["rejected"] or 0
         metrics = connection.execute("SELECT COUNT(*) AS count FROM publish_metrics").fetchone()["count"]
         top_types = connection.execute(
             """
@@ -68,5 +92,5 @@ def learning_summary() -> dict:
 
 @router.post("/learning/train")
 def train_learning() -> dict:
-    summary = active_model_summary()
-    return {"ok": True, "message": "Rejection-aware local ranker refreshed from current feedback.", **summary}
+    result = train_personal_ranker()
+    return {"ok": bool(result.get("trained")), **result, **active_model_summary()}

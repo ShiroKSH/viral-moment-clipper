@@ -24,7 +24,7 @@ def test_transcribe_audio_retries_cpu_int8_when_gpu_not_required(monkeypatch, tm
     result = transcription.transcribe_audio(tmp_path / "audio.wav", settings, duration=12.0)
 
     assert calls == [("cuda", "float16"), ("cpu", "int8")]
-    assert result.engine == "faster-whisper:cpu"
+    assert result.engine == "faster-whisper:cpu:fallback"
     assert result.duration == 12.0
     assert not transcription.is_synthetic_transcript(result)
 
@@ -35,7 +35,20 @@ def test_transcribe_audio_raises_when_gpu_required(monkeypatch, tmp_path):
 
     monkeypatch.setattr(transcription, "_transcribe_with_faster_whisper", fail_transcribe)
 
+    settings = Settings()
+    settings.transcription.require_gpu = True
+
     with pytest.raises(AppError, match="GPU transcription failed"):
+        transcription.transcribe_audio(tmp_path / "audio.wav", settings, duration=8.0)
+
+
+def test_transcribe_audio_does_not_silently_use_synthetic_fallback(monkeypatch, tmp_path):
+    def fail_transcribe(audio_path, config, device, compute_type):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(transcription, "_transcribe_with_faster_whisper", fail_transcribe)
+
+    with pytest.raises(AppError, match="Transcription failed"):
         transcription.transcribe_audio(tmp_path / "audio.wav", Settings(), duration=8.0)
 
 

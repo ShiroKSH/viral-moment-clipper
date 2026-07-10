@@ -23,6 +23,8 @@ output/*
 !output/.gitkeep
 temp/*
 !temp/.gitkeep
+models/*
+!models/.gitkeep
 tools/ffmpeg/
 
 # OS/editor

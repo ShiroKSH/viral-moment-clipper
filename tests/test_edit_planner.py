@@ -27,10 +27,11 @@ def test_edit_plan_generates_banger_dynamic_operations_without_overediting():
     types = [operation.type for operation in plan.operations]
 
     assert "trim" in types
-    assert "progress_bar" in types
-    assert "micro_flash" in types
-    assert "focus_frame" in types
-    assert types.count("punch_zoom") <= 11
+    assert "progress_bar" not in types
+    assert "micro_flash" not in types
+    assert "focus_frame" not in types
+    assert types.count("punch_zoom") <= 3
+    assert any(operation.reason.startswith("hook") for operation in plan.operations if operation.type == "punch_zoom")
 
 
 def test_edit_plan_respects_dynamic_disable_and_zoom_caps():
@@ -45,4 +46,12 @@ def test_edit_plan_respects_dynamic_disable_and_zoom_caps():
     capped = build_edit_plan(_clip(), settings, profile="banger")
     zooms = [operation for operation in capped.operations if operation.type == "punch_zoom"]
     assert len(zooms) <= 3
-    assert all((right.start or 0) - (left.start or 0) >= 10 for left, right in zip(zooms, zooms[1:]))
+    assert all((right.start or 0) - (left.start or 0) >= 4.4 for left, right in zip(zooms, zooms[1:]))
+
+
+def test_clean_profile_records_distinct_grammar_without_generated_effects():
+    plan = build_edit_plan(_clip(), Settings(), profile="clean", scene_cuts=[8.0, 16.0])
+
+    assert plan.strategy == "clean_native_v1"
+    assert plan.generated_effect_count == 0
+    assert not any(operation.type in {"punch_zoom", "shot_motion", "evidence_stamp"} for operation in plan.operations)

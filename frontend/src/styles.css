@@ -68,6 +68,28 @@ button:disabled {
   white-space: nowrap;
 }
 
+.status-stack {
+  align-items: end;
+  display: grid;
+  gap: 6px;
+}
+
+.runtime-row {
+  color: #536159;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.runtime-row span {
+  background: #ffffff;
+  border: 1px solid #d8ded7;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
 .dot {
   border-radius: 50%;
   display: inline-block;
@@ -93,6 +115,30 @@ button:disabled {
   grid-template-columns: minmax(300px, 1fr) minmax(280px, 480px) auto;
   margin-bottom: 14px;
   padding: 14px;
+}
+
+.upload-form {
+  display: grid;
+  gap: 10px;
+}
+
+.upload-form-title {
+  align-items: center;
+  color: #25332b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.upload-form-title strong {
+  font-size: 14px;
+}
+
+.upload-form-title span {
+  color: #536159;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .field-line {
@@ -217,7 +263,46 @@ button:focus-visible {
 }
 
 .project-panel select {
-  max-width: 160px;
+  max-width: 270px;
+}
+
+.active-project-strip {
+  background: #f1f5fa;
+  border: 1px solid #c8d7eb;
+  border-radius: 6px;
+  display: grid;
+  gap: 3px;
+  margin-bottom: 9px;
+  padding: 8px;
+}
+
+.active-project-strip strong,
+.active-project-strip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-project-strip span {
+  color: #536159;
+  font-size: 12px;
+}
+
+.project-actions {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+.icon-button.compact {
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+.icon-button.danger {
+  background: #fff1ed;
+  border-color: #e4a194;
+  color: #8b2518;
 }
 
 .metadata-grid {
@@ -544,8 +629,34 @@ summary {
     padding: 10px;
   }
 
+  .status-stack,
+  .runtime-row,
+  .workbench,
+  .left-rail,
+  .right-rail,
+  .command-band,
+  .panel {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .status-stack {
+    align-items: stretch;
+  }
+
+  .runtime-row {
+    justify-content: flex-start;
+  }
+
+  .runtime-row span {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
   .topbar,
   .command-actions,
+  .project-actions,
   .clip-actions {
     align-items: stretch;
     flex-direction: column;
@@ -560,6 +671,16 @@ summary {
   }
 
   .health-row {
+    grid-template-columns: 10px minmax(0, 1fr) 10px minmax(0, 1fr);
     width: 100%;
+  }
+
+  .project-panel .panel-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-panel select {
+    max-width: none;
   }
 }

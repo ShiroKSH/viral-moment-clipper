@@ -16,6 +16,9 @@ class EditOperation(BaseModel):
 class EditPlan(BaseModel):
     clip_id: str
     profile: str
+    strategy: str = "semantic_tension_v1"
+    natural_cut_count: int = 0
+    generated_effect_count: int = 0
     operations: list[EditOperation] = Field(default_factory=list)
 
 
