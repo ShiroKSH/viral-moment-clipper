@@ -8,6 +8,7 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.core.paths import PROJECT_ROOT
+from backend.core.utils import atomic_write_text
 
 
 class AppConfig(BaseModel):
@@ -188,8 +189,8 @@ def save_config(raw: dict[str, Any]) -> Settings:
         settings = Settings.model_validate(raw)
     except ValidationError as exc:
         raise ValueError(str(exc)) from exc
-    with CONFIG_PATH.open("w", encoding="utf-8") as file:
-        yaml.safe_dump(settings.model_dump(), file, sort_keys=False, allow_unicode=True)
+    serialized = yaml.safe_dump(settings.model_dump(), sort_keys=False, allow_unicode=True)
+    atomic_write_text(CONFIG_PATH, serialized)
     load_config.cache_clear()
     return load_config()
 

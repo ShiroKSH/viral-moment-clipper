@@ -24,7 +24,7 @@ from backend.services.captions import write_caption_file
 from backend.services.clip_boundary import choose_clip_boundary
 from backend.services.clip_context import refresh_clip_context
 from backend.services.edit_planner import build_edit_plan
-from backend.services.jobs import get_job, update_job
+from backend.services.jobs import is_job_cancelled, update_job
 from backend.services.learning.feedback_store import store_feedback
 from backend.services.learning.personal_ranker import apply_personal_ranking
 from backend.services.renderer import render_acceleration_summary, render_clip, verify_render_integrity
@@ -46,6 +46,13 @@ def _candidate_fingerprint(moment) -> str:
     normalized = " ".join(moment.text.lower().split())[:320]
     payload = f"{moment.start:.1f}|{moment.end:.1f}|{normalized}".encode("utf-8")
     return hashlib.sha1(payload).hexdigest()[:8]
+
+
+def _restore_project_after_cancellation(job_id: str, project_id: str, previous_status: str) -> bool:
+    if not is_job_cancelled(job_id):
+        return False
+    project_store.set_project_status(project_id, previous_status)
+    return True
 
 
 def _subtitle_tail_seconds(segments: list) -> float:
@@ -156,12 +163,23 @@ def run_analysis(project_id: str, job_id: str) -> None:
     if not project or not source_path:
         update_job(job_id, status=JobStatus.failed, stage="failed", error="Project has no uploaded video")
         return
+    previous_status = project.status
     try:
+        started_job = update_job(
+            job_id,
+            status=JobStatus.running,
+            stage="extracting_audio",
+            progress=0.12,
+            message="Extracting WAV",
+        )
+        if started_job.status != JobStatus.running:
+            return
         project_store.set_project_status(project_id, "analyzing")
-        update_job(job_id, status=JobStatus.running, stage="extracting_audio", progress=0.12, message="Extracting WAV")
         output_dir = Path(project.output_dir)
         audio_path = output_dir / "source" / "audio_16k_mono.wav"
         extract_wav(source_path, audio_path, config)
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
+            return
         extracted_duration = wav_duration(audio_path)
         extraction_report = read_json(audio_extraction_report_path(audio_path), fallback={})
 
@@ -179,6 +197,8 @@ def run_analysis(project_id: str, job_id: str) -> None:
         )
         duration = extracted_duration or (project.video.duration if project.video else 0)
         transcript = transcribe_audio(audio_path, config, duration=duration)
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
+            return
         update_job(job_id, stage="transcribing", progress=0.40, message=f"Transcribed with {transcript.engine}", log=f"Transcription engine: {transcript.engine}")
         if config.speakers.enabled:
             update_job(
@@ -189,6 +209,8 @@ def run_analysis(project_id: str, job_id: str) -> None:
                 log=f"Speaker assignment: {config.speakers.embedding_backend} embeddings with local clustering fallback",
             )
             transcript = assign_speakers(audio_path, transcript, config)
+            if _restore_project_after_cancellation(job_id, project_id, previous_status):
+                return
             update_job(job_id, stage="speaker_labeling", progress=0.46, message=speaker_summary(transcript), log=speaker_summary(transcript))
         transcript_json = output_dir / "source" / "transcript_full.json"
         transcript_srt = output_dir / "source" / "transcript_full.srt"
@@ -209,6 +231,8 @@ def run_analysis(project_id: str, job_id: str) -> None:
                 threshold=config.dynamic_edit.scene_threshold,
                 hwaccel=config.render.hwaccel,
             )
+            if _restore_project_after_cancellation(job_id, project_id, previous_status):
+                return
 
         update_job(
             job_id,
@@ -218,6 +242,8 @@ def run_analysis(project_id: str, job_id: str) -> None:
             log=f"Source rhythm: {len(source_scene_cuts)} shot changes",
         )
         moments = find_interesting_moments(sentences, config, scene_cuts=source_scene_cuts)
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
+            return
         if not moments:
             raise AppError("No interesting moments found")
 
@@ -271,6 +297,8 @@ def run_analysis(project_id: str, job_id: str) -> None:
             selected_moments.append(moment)
             analysis_entries.append((moment, clip, edit_plan))
 
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
+            return
         previous_clip_ids = [previous.id for previous in project_store.list_clips(project_id)]
         archive_result = archive_analysis_artifacts(output_dir, previous_clip_ids)
         if archive_result.archive_dir:
@@ -301,6 +329,8 @@ def run_analysis(project_id: str, job_id: str) -> None:
         project_store.set_project_status(project_id, "ready")
         update_job(job_id, status=JobStatus.done, stage="ready", progress=1, message="Analysis ready", log=f"Created {len(clips)} candidates")
     except Exception as exc:
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
+            return
         project_store.set_project_status(project_id, "analysis_failed")
         update_job(job_id, status=JobStatus.failed, stage="failed", error=str(exc), message="Analysis failed")
 
@@ -337,9 +367,18 @@ def run_render(project_id: str, job_id: str, clip_ids: list[str] | None = None) 
     if not project or not source_path:
         update_job(job_id, status=JobStatus.failed, stage="failed", error="Project has no uploaded video")
         return
+    previous_status = project.status
     try:
+        started_job = update_job(
+            job_id,
+            status=JobStatus.running,
+            stage="rendering",
+            progress=0.05,
+            message="Preparing render",
+        )
+        if started_job.status != JobStatus.running:
+            return
         project_store.set_project_status(project_id, "rendering")
-        update_job(job_id, status=JobStatus.running, stage="rendering", progress=0.05, message="Preparing render")
         output_dir = Path(project.output_dir)
         transcript = _speaker_ready_transcript(project_id, output_dir, config)
         extracted_audio_path = output_dir / "source" / "audio_16k_mono.wav"
@@ -359,9 +398,7 @@ def run_render(project_id: str, job_id: str, clip_ids: list[str] | None = None) 
         badge_path = generate_badge(output_dir / "metadata" / "badge.png", config)
         total = len(clips)
         for index, clip in enumerate(clips, start=1):
-            job = get_job(job_id)
-            if job and job.status == JobStatus.cancelled:
-                project_store.set_project_status(project_id, "ready")
+            if _restore_project_after_cancellation(job_id, project_id, previous_status):
                 return
             clip = refresh_clip_context(clip, transcript)
             update_job(job_id, stage="rendering", progress=0.05 + (index - 1) / total * 0.9, message=f"Rendering {clip.id}", log=f"Rendering {clip.id}")
@@ -458,12 +495,12 @@ def run_render(project_id: str, job_id: str, clip_ids: list[str] | None = None) 
             )
             project_store.mark_clip_rendered(project_id, clip.id, output_path, srt_path, ass_path, edit_plan_path, metadata_path)
             store_feedback(project_id, clip.id, clip.moment_id, FeedbackRequest(action="rendered"))
-        job = get_job(job_id)
-        if job and job.status == JobStatus.cancelled:
-            project_store.set_project_status(project_id, "ready")
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
             return
         project_store.set_project_status(project_id, "rendered")
         update_job(job_id, status=JobStatus.done, stage="done", progress=1, message="Render complete")
     except Exception as exc:
+        if _restore_project_after_cancellation(job_id, project_id, previous_status):
+            return
         project_store.set_project_status(project_id, "render_failed")
         update_job(job_id, status=JobStatus.failed, stage="failed", error=str(exc), message="Render failed")

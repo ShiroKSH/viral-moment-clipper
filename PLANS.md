@@ -28,6 +28,7 @@ Local Windows app: long video in, speech analysis, potentially interesting momen
 - Render integrity done: successful output requires the expected 1080x1920 video duration/frame count, writes an integrity JSON sidecar, and rejects audio-only tails or truncated motion graphs.
 - Corrupt-source recovery done: audio extraction records normal/recovery mode, render reuses the clean recovered WAV when source AAC is damaged, and audio/video duration is verified after muxing.
 - Learning hardening done: automatic `rendered` events do not train the ranker; feedback/metrics keep immutable feature snapshots, repeated events collapse to the latest decision, project cleanup invalidates stale models, and training commits atomically after enough distinct outcomes.
+- Job and persistence hardening done: per-project job creation is atomic, cancellation cannot revive or rewrite completed jobs, failed replacement uploads preserve the previous source, and config/JSON sidecars use atomic replacement.
 
 Advanced remaining: immutable render-variant records and blind A/B UI, per-second retention-curve import, stronger neural diarization/WhisperX alignment, conservative silence-removal timeline, face tracking crop, real visual/audio energy features, and enough balanced real feedback to activate the trained model for this installation.
 

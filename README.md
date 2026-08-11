@@ -43,6 +43,8 @@ Open `http://127.0.0.1:5173`. The backend listens on `http://127.0.0.1:7878`.
 4. Accept/reject or adjust candidates.
 5. Render selected clips to `output/<project>/`.
 
+Uploads are staged and checked with ffprobe before they replace an existing project source. Analysis and render requests share one per-project job guard, cancellation is terminal, and config/JSON sidecars are replaced atomically so an interrupted write does not leave a partial document.
+
 ## Montage
 The edit planner uses transcript word timestamps and the source video's existing shot changes. Long shots can receive a slow, cut-shaped camera move capped at 2.8%; existing close-ups and short shots stay untouched. Timed evidence typography is reserved for concrete quantities. At most one quiet semantic sound and one synchronized 3.2-4.5% visual pulse can mark a strong question, reveal, or contrast. These rules replace fixed-interval zooms and effect spam.
 

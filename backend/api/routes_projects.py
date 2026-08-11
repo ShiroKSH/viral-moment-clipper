@@ -3,18 +3,20 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+from typing import BinaryIO
+from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from backend.core.config import load_config
+from backend.core.config import Settings, load_config
 from backend.core.errors import AppError
 from backend.core.paths import safe_upload_name
 from backend.schemas.render import RenderRequest
-from backend.schemas.video import ProjectCreate
+from backend.schemas.video import ProjectCreate, VideoMetadata
 from backend.services import project_store
 from backend.services.content_quality import repair_mojibake
-from backend.services.jobs import create_job, get_active_project_job
+from backend.services.jobs import create_project_job, get_active_project_job
 from backend.services.pipeline import run_analysis, run_render
 from backend.services.video_probe import probe_video
 
@@ -26,6 +28,31 @@ ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
 class ProjectCleanupRequest(BaseModel):
     keep_project_id: str
     remove_files: bool = True
+
+
+def _store_validated_upload(
+    file_object: BinaryIO,
+    target: Path,
+    config: Settings,
+) -> VideoMetadata:
+    staged_path = target.with_name(f".{target.stem}.{uuid4().hex}.upload{target.suffix}")
+    try:
+        with staged_path.open("xb") as output:
+            shutil.copyfileobj(file_object, output)
+        metadata = probe_video(staged_path, config)
+        os.replace(staged_path, target)
+        format_metadata = metadata.raw.get("format")
+        if isinstance(format_metadata, dict) and "filename" in format_metadata:
+            format_metadata["filename"] = str(target)
+        return metadata
+    finally:
+        staged_path.unlink(missing_ok=True)
+
+
+def _require_project_idle(project_id: str) -> None:
+    active_job = get_active_project_job(project_id)
+    if active_job:
+        raise HTTPException(status_code=409, detail=f"Project is busy: {active_job.stage}")
 
 
 def _speaker_summary_from_payload(payload: dict) -> tuple[str, dict[str, int]]:
@@ -68,6 +95,9 @@ def list_projects() -> list[dict]:
 
 @router.post("/cleanup")
 def cleanup_projects(payload: ProjectCleanupRequest) -> dict:
+    for project in project_store.list_projects():
+        if project.id != payload.keep_project_id:
+            _require_project_idle(project.id)
     try:
         deleted = project_store.delete_projects_except(payload.keep_project_id, load_config(), remove_files=payload.remove_files)
     except AppError as exc:
@@ -88,6 +118,7 @@ def get_project(project_id: str) -> dict:
 
 @router.delete("/{project_id}")
 def delete_project(project_id: str, remove_files: bool = True) -> dict:
+    _require_project_idle(project_id)
     try:
         project = project_store.delete_project(project_id, load_config(), remove_files=remove_files)
     except AppError as exc:
@@ -102,18 +133,17 @@ def upload_video(project_id: str, file: UploadFile = File(...)) -> dict:
     project = project_store.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    _require_project_idle(project_id)
     filename = safe_upload_name(file.filename or "video.mp4")
     suffix = Path(filename).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=415, detail="Unsupported video format")
     target = Path(project.output_dir) / "source" / filename
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("wb") as output:
-        shutil.copyfileobj(file.file, output)
     try:
-        metadata = probe_video(target, load_config())
+        metadata = _store_validated_upload(file.file, target, load_config())
     except AppError as exc:
-        project_store.set_project_status(project_id, "probe_failed")
+        project_store.set_project_status(project_id, project.status if project.source_path else "probe_failed")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     project_store.attach_video(project_id, target, metadata)
     updated = project_store.get_project(project_id)
@@ -124,11 +154,9 @@ def upload_video(project_id: str, file: UploadFile = File(...)) -> dict:
 def analyze_project(project_id: str, background_tasks: BackgroundTasks) -> dict:
     if not project_store.get_project(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
-    active_job = get_active_project_job(project_id)
-    if active_job:
-        return active_job.model_dump()
-    job = create_job(project_id)
-    background_tasks.add_task(run_analysis, project_id, job.job_id)
+    job, created = create_project_job(project_id)
+    if created:
+        background_tasks.add_task(run_analysis, project_id, job.job_id)
     return job.model_dump()
 
 
@@ -164,11 +192,9 @@ def project_analysis(project_id: str) -> dict:
 def render_project(project_id: str, payload: RenderRequest, background_tasks: BackgroundTasks) -> dict:
     if not project_store.get_project(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
-    active_job = get_active_project_job(project_id)
-    if active_job:
-        return active_job.model_dump()
-    job = create_job(project_id)
-    background_tasks.add_task(run_render, project_id, job.job_id, payload.clip_ids)
+    job, created = create_project_job(project_id)
+    if created:
+        background_tasks.add_task(run_render, project_id, job.job_id, payload.clip_ids)
     return job.model_dump()
 
 
