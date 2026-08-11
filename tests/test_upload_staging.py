@@ -76,6 +76,7 @@ def test_failed_replacement_upload_restores_project_status(monkeypatch, tmp_path
         raise AppError("invalid video")
 
     monkeypatch.setattr(routes_projects.project_store, "get_project", lambda _: project)
+    monkeypatch.setattr(routes_projects, "get_active_project_job", lambda _: None)
     monkeypatch.setattr(
         routes_projects.project_store,
         "set_project_status",

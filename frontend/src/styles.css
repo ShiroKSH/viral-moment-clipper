@@ -262,6 +262,12 @@ button:focus-visible {
   margin: 0;
 }
 
+.progress-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .project-panel select {
   max-width: 270px;
 }

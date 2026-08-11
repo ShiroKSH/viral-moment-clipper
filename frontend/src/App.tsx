@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   acceptClip,
   analyzeProject,
+  cancelJob,
   cleanupProjects,
   createProject,
   deleteProject,
@@ -42,6 +43,7 @@ export default function App() {
   const [authorHandle, setAuthorHandle] = useState('@my_youtube_nick');
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [cancellingJob, setCancellingJob] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
 
   const activeProject = (analysis && analysis.project.id === selectedProjectId ? analysis.project : projects.find((project) => project.id === selectedProjectId)) || null;
@@ -90,6 +92,7 @@ export default function App() {
 
   useEffect(() => {
     setAnalysis(null);
+    setJob((current) => (current?.project_id === selectedProjectId ? current : null));
     if (selectedProjectId) refreshAnalysis(selectedProjectId).catch((err) => setError(err.message));
   }, [selectedProjectId, refreshAnalysis]);
 
@@ -99,7 +102,7 @@ export default function App() {
       try {
         const nextJob = await getJob(job.job_id);
         setJob(nextJob);
-        if (nextJob.status === 'done' || nextJob.status === 'failed') {
+        if (nextJob.status === 'done' || nextJob.status === 'failed' || nextJob.status === 'cancelled') {
           const jobProjectId = nextJob.project_id || selectedProjectId;
           if (jobProjectId) setSelectedProjectId(jobProjectId);
           await refreshProjects(jobProjectId || undefined);
@@ -117,14 +120,12 @@ export default function App() {
   useEffect(() => {
     if (!selectedProjectId || jobBusy) return;
     let cancelled = false;
-    getLatestProjectJob(selectedProjectId, true)
+    getLatestProjectJob(selectedProjectId)
       .then((latestJob) => {
-        if (!cancelled && latestJob && (latestJob.status === 'queued' || latestJob.status === 'running')) {
-          setJob(latestJob);
-        }
+        if (!cancelled) setJob(latestJob);
       })
-      .catch(() => {
-        // Missing in-memory jobs after a backend restart should not block normal use.
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       });
     return () => {
       cancelled = true;
@@ -208,6 +209,23 @@ export default function App() {
       await refreshProjects(activeProject.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function cancelCurrentJob() {
+    if (!jobBusy || !job) return;
+    try {
+      setError('');
+      setCancellingJob(true);
+      const cancelledJob = await cancelJob(job.job_id);
+      setJob(cancelledJob);
+      const projectId = cancelledJob.project_id || selectedProjectId;
+      await refreshProjects(projectId || undefined);
+      if (projectId) await refreshAnalysis(projectId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancellingJob(false);
     }
   }
 
@@ -312,7 +330,11 @@ export default function App() {
             onCleanup={keepOnlyProject}
             busy={busy}
           />
-          <ProgressView job={job} />
+          <ProgressView
+            job={job}
+            cancelling={cancellingJob}
+            onCancel={cancelCurrentJob}
+          />
           <SettingsPanel settings={settings} onChange={setSettings} onSave={() => settings && saveSettings(settings).then(setSettings).catch((err) => setError(err.message))} />
         </div>
         <ClipCandidates clips={clips} onPatch={patchClip} onAccept={markAccepted} onReject={markRejected} onRender={renderSelected} busy={busy} />

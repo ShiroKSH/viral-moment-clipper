@@ -133,4 +133,27 @@ CREATE TABLE IF NOT EXISTS ranking_models (
   created_at TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS jobs (
+  job_id TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  operation TEXT NOT NULL DEFAULT 'generic' CHECK (operation IN ('generic', 'analysis', 'render')),
+  project_status_before TEXT,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'cancelled')),
+  cancel_requested INTEGER NOT NULL DEFAULT 0,
+  stage TEXT NOT NULL,
+  progress REAL NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 1),
+  message TEXT NOT NULL DEFAULT '',
+  logs_json TEXT NOT NULL DEFAULT '[]',
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_project_started
+ON jobs(project_id, started_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_one_active_project
+ON jobs(project_id)
+WHERE project_id IS NOT NULL AND status IN ('queued', 'running');
 """

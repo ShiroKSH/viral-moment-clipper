@@ -11,11 +11,20 @@ from backend.core.paths import PROJECT_ROOT
 DB_PATH = PROJECT_ROOT / "temp" / "viral_moment_clipper.sqlite3"
 
 
+class ManagedConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def get_connection() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH, timeout=5.0, factory=ManagedConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 5000")
     return connection
 
 
@@ -23,10 +32,12 @@ def init_db() -> None:
     from backend.db.models import SCHEMA
 
     with get_connection() as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(SCHEMA)
         _migrate_source_videos(connection)
         _migrate_feedback(connection)
         _migrate_publish_metrics(connection)
+        _migrate_jobs(connection)
 
 
 def _migrate_source_videos(connection: sqlite3.Connection) -> None:
@@ -148,6 +159,14 @@ def _migrate_publish_metrics(connection: sqlite3.Connection) -> None:
     connection.execute("DROP TABLE publish_metrics")
     connection.execute("ALTER TABLE publish_metrics_new RENAME TO publish_metrics")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_publish_metrics_moment ON publish_metrics(moment_id)")
+
+
+def _migrate_jobs(connection: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "cancel_requested" not in columns:
+        connection.execute(
+            "ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict | None:

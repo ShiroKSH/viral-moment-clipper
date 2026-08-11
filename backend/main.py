@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,14 +7,20 @@ from backend.api import routes_clips, routes_feedback, routes_health, routes_job
 from backend.core.config import load_config
 from backend.core.paths import ensure_runtime_dirs
 from backend.db.database import init_db
+from backend.services.jobs import recover_interrupted_jobs
 
 
-def create_app() -> FastAPI:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     config = load_config()
     ensure_runtime_dirs(config)
     init_db()
+    recover_interrupted_jobs()
+    yield
 
-    app = FastAPI(title="Viral Moment Clipper", version="0.1.0")
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Viral Moment Clipper", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],

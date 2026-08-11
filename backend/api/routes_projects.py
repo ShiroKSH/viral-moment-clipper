@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from backend.core.config import Settings, load_config
 from backend.core.errors import AppError
 from backend.core.paths import safe_upload_name
+from backend.schemas.jobs import JobOperation
 from backend.schemas.render import RenderRequest
 from backend.schemas.video import ProjectCreate, VideoMetadata
 from backend.services import project_store
@@ -152,9 +153,14 @@ def upload_video(project_id: str, file: UploadFile = File(...)) -> dict:
 
 @router.post("/{project_id}/analyze")
 def analyze_project(project_id: str, background_tasks: BackgroundTasks) -> dict:
-    if not project_store.get_project(project_id):
+    project = project_store.get_project(project_id)
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    job, created = create_project_job(project_id)
+    job, created = create_project_job(
+        project_id,
+        operation=JobOperation.analysis,
+        project_status_before=project.status,
+    )
     if created:
         background_tasks.add_task(run_analysis, project_id, job.job_id)
     return job.model_dump()
@@ -190,9 +196,14 @@ def project_analysis(project_id: str) -> dict:
 
 @router.post("/{project_id}/render")
 def render_project(project_id: str, payload: RenderRequest, background_tasks: BackgroundTasks) -> dict:
-    if not project_store.get_project(project_id):
+    project = project_store.get_project(project_id)
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    job, created = create_project_job(project_id)
+    job, created = create_project_job(
+        project_id,
+        operation=JobOperation.render,
+        project_status_before=project.status,
+    )
     if created:
         background_tasks.add_task(run_render, project_id, job.job_id, payload.clip_ids)
     return job.model_dump()

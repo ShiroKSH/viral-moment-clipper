@@ -24,7 +24,11 @@ from backend.services.captions import write_caption_file
 from backend.services.clip_boundary import choose_clip_boundary
 from backend.services.clip_context import refresh_clip_context
 from backend.services.edit_planner import build_edit_plan
-from backend.services.jobs import is_job_cancelled, update_job
+from backend.services.jobs import (
+    acknowledge_job_cancelled,
+    is_job_cancelled,
+    update_job,
+)
 from backend.services.learning.feedback_store import store_feedback
 from backend.services.learning.personal_ranker import apply_personal_ranking
 from backend.services.renderer import render_acceleration_summary, render_clip, verify_render_integrity
@@ -52,6 +56,7 @@ def _restore_project_after_cancellation(job_id: str, project_id: str, previous_s
     if not is_job_cancelled(job_id):
         return False
     project_store.set_project_status(project_id, previous_status)
+    acknowledge_job_cancelled(job_id)
     return True
 
 

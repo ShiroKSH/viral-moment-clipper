@@ -69,6 +69,10 @@ export function getJob(jobId: string) {
   return request<JobRecord>(`/jobs/${jobId}`);
 }
 
+export function cancelJob(jobId: string) {
+  return request<JobRecord>(`/jobs/${jobId}/cancel`, { method: 'POST' });
+}
+
 export function getLatestProjectJob(projectId: string, activeOnly = false) {
   const params = new URLSearchParams({ project_id: projectId, latest: 'true' });
   if (activeOnly) params.set('active_only', 'true');

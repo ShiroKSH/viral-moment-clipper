@@ -13,10 +13,19 @@ class JobStatus(str, Enum):
     cancelled = "cancelled"
 
 
+class JobOperation(str, Enum):
+    generic = "generic"
+    analysis = "analysis"
+    render = "render"
+
+
 class JobRecord(BaseModel):
     job_id: str
     project_id: str | None = None
+    operation: JobOperation = JobOperation.generic
+    project_status_before: str | None = None
     status: JobStatus = JobStatus.queued
+    cancel_requested: bool = False
     stage: str = "queued"
     progress: float = 0
     message: str = ""

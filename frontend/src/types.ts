@@ -26,11 +26,16 @@ export type Project = {
 export type JobRecord = {
   job_id: string;
   project_id?: string | null;
+  operation: 'generic' | 'analysis' | 'render';
+  project_status_before?: string | null;
   status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+  cancel_requested: boolean;
   stage: string;
   progress: number;
   message: string;
   logs: string[];
+  started_at?: string | null;
+  finished_at?: string | null;
   error?: string | null;
 };
 
