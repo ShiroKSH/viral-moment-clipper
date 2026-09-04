@@ -82,4 +82,20 @@ Candidate selection records evidence-based promotional ranges in `source/candida
 
 Scores and edit grammars are retention hypotheses, not guaranteed virality. Automatic render events do not count as training feedback; meaningful learning requires explicit review or real publish metrics from distinct clips.
 
-The personal ranker uses online preferences immediately and automatically trains a local sklearn logistic model after the configured number of distinct usable outcomes. Feedback stores immutable feature snapshots, so later reanalysis cannot silently rewrite historical training rows.
+The personal ranker uses small online preference adjustments immediately. After enough balanced, distinct reviews (12 by default), it fits a local logistic model with standardized features. Feedback snapshots are validated with Pydantic; malformed snapshots are skipped without substituting newer candidate data.
+
+Model validation holds out complete source projects: clips from one project never appear on both sides of a split. Accepted and rejected examples must each span at least two projects. A model activates only when its held-out Brier score beats the training-fold class-prior baseline and its ROC AUC exceeds 0.5. Otherwise online preferences remain active. This follows sklearn's guidance on [grouped validation](https://scikit-learn.org/stable/modules/cross_validation.html) and [preprocessing without data leakage](https://scikit-learn.org/stable/common_pitfalls.html).
+
+Publish metrics use the latest capture of each publication. Omitted retention and watch time are stored as missing; explicit zero is a real observation. Samples without retention keep a neutral training weight. Historical zeros remain as stored because older records did not distinguish zero from missing.
+
+Models and validation reports are saved under the configured models directory in `ranking_models/`. Each JSON report includes fold membership, held-out metrics, the model specification, and a training fingerprint. `learning.save_training_rows: false` omits feature examples from these reports. Changed feedback or training settings trigger a fresh evaluation; repeated identical reviews reuse the previous result. Incompatible or damaged model files fall back to online preferences and can be rebuilt by training again. Only local application-created joblib files should be used.
+
+The learning API exposes validation status through `GET /api/learning/summary`; `POST /api/learning/train` runs an explicit evaluation. A response with `trained: true` and `active: false` means the model was saved for inspection but did not pass validation. Small feedback sets remain uncertain even when they pass; broader reviews across videos are needed to assess usefulness.
+
+## Tests
+
+```bat
+.venv\Scripts\python.exe -m pytest
+```
+
+Learning tests cover real SQLite persistence and HTTP endpoints, feature snapshots, grouped validation, missing metrics, batch prediction, and recovery from damaged artifacts or failed writes.

@@ -2,37 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.schemas.learning import ClipFeatures
 from backend.services.content_quality import quality_penalty
 
 
 CATEGORICAL_FEATURES = ("moment_type",)
-NUMERIC_FEATURES = (
-    "duration",
-    "word_count",
-    "words_per_second",
-    "semantic_interest_score",
-    "hook_score",
-    "clarity_score",
-    "emotion_score",
-    "novelty_score",
-    "standalone_score",
-    "retention_score",
-    "speech_density_score",
-    "audio_energy_score",
-    "visual_energy_score",
-    "speaker_count",
-    "speaker_switches",
-    "dialogue_score",
-    "base_score",
-    "quality_penalty",
-    "starts_with_hook",
-    "has_conflict",
-    "has_story",
-    "has_result",
-    "is_ad_like",
-    "is_generic_clip_text",
-    "is_low_information",
-)
+NUMERIC_FEATURES = tuple(name for name in ClipFeatures.model_fields if name not in CATEGORICAL_FEATURES)
 FEATURE_NAMES = CATEGORICAL_FEATURES + NUMERIC_FEATURES
 
 
@@ -50,25 +25,12 @@ def extract_clip_features(clip: Any) -> dict[str, float | str | bool]:
     duration = float(_value(clip, "duration", 0) or 0)
     penalty, problems = quality_penalty(" ".join([text, summary, hook_text]))
     combined = " ".join([text, summary, hook_text]).lower()
-    features: dict[str, float | str | bool] = {
-        "moment_type": str(_value(clip, "moment_type", "unknown") or "unknown"),
+    features = {name: _value(clip, name, 0) or 0 for name in NUMERIC_FEATURES}
+    features.update({
+        "moment_type": _value(clip, "moment_type", "unknown") or "unknown",
         "duration": duration,
         "word_count": len(text.split()),
         "words_per_second": len(text.split()) / max(duration, 1),
-        "semantic_interest_score": float(_value(clip, "semantic_interest_score", 0) or 0),
-        "hook_score": float(_value(clip, "hook_score", 0) or 0),
-        "clarity_score": float(_value(clip, "clarity_score", 0) or 0),
-        "emotion_score": float(_value(clip, "emotion_score", 0) or 0),
-        "novelty_score": float(_value(clip, "novelty_score", 0) or 0),
-        "standalone_score": float(_value(clip, "standalone_score", 0) or 0),
-        "retention_score": float(_value(clip, "retention_score", 0) or 0),
-        "speech_density_score": float(_value(clip, "speech_density_score", 0) or 0),
-        "audio_energy_score": float(_value(clip, "audio_energy_score", 0) or 0),
-        "visual_energy_score": float(_value(clip, "visual_energy_score", 0) or 0),
-        "speaker_count": float(_value(clip, "speaker_count", 0) or 0),
-        "speaker_switches": float(_value(clip, "speaker_switches", 0) or 0),
-        "dialogue_score": float(_value(clip, "dialogue_score", 0) or 0),
-        "base_score": float(_value(clip, "base_score", 0) or 0),
         "quality_penalty": float(penalty),
         "starts_with_hook": bool(hook_text),
         "has_conflict": str(_value(clip, "moment_type", "")) == "controversial_take",
@@ -77,10 +39,10 @@ def extract_clip_features(clip: Any) -> dict[str, float | str | bool]:
         "is_ad_like": "ad or CTA language" in problems,
         "is_generic_clip_text": "generic clip-analysis text" in problems,
         "is_low_information": "low-information intro/outro" in problems,
-    }
-    return features
+    })
+    return ClipFeatures.model_validate(features).model_dump()
 
 
 def feature_row(item: Any) -> dict[str, float | str]:
     features = extract_clip_features(item)
-    return {name: features.get(name, 0) for name in FEATURE_NAMES}
+    return {name: str(features[name]) if name in CATEGORICAL_FEATURES else float(features[name]) for name in FEATURE_NAMES}

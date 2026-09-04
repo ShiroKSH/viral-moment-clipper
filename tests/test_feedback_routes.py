@@ -14,7 +14,7 @@ def test_train_endpoint_reports_real_training_result(monkeypatch):
     )
     monkeypatch.setattr(
         routes_feedback,
-        "active_model_summary",
+        "ranker_summary",
         lambda: {
             "feedback_count": 31,
             "active_ranker_version": "personal_ranker_test",

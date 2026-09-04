@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from backend.db.database import get_connection
 from backend.schemas.feedback import FeedbackRequest, MetricsRequest
-from backend.services import project_store
 from backend.services.learning.feedback_store import store_feedback
 from backend.services.learning.metrics_import import store_metrics
-from backend.services.learning.model_registry import active_model_summary
-from backend.services.learning.training import maybe_train_personal_ranker, train_personal_ranker
+from backend.services.learning.personal_ranker import ranker_summary
+from backend.services.learning.training import train_personal_ranker
 
 router = APIRouter(prefix="/api", tags=["feedback"])
 
@@ -31,8 +32,9 @@ def add_metrics(clip_id: str, payload: MetricsRequest) -> dict:
         raise HTTPException(status_code=404, detail="Clip not found")
     metrics_id = store_metrics(clip_id, payload, project_id=row["project_id"], moment_id=row["moment_id"])
     try:
-        training = maybe_train_personal_ranker()
+        training = train_personal_ranker()
     except Exception:
+        logging.getLogger(__name__).exception("Metrics saved, but personal ranker refresh failed.")
         training = {"trained": False, "message": "Metrics saved; local model refresh will retry later."}
     return {"id": metrics_id, "training": training}
 
@@ -44,7 +46,7 @@ def learning_summary() -> dict:
         decisions = connection.execute(
             """
             WITH latest_decisions AS (
-              SELECT action,
+              SELECT moment_id, action,
                      ROW_NUMBER() OVER (
                        PARTITION BY COALESCE(moment_id, clip_id)
                        ORDER BY created_at DESC, id DESC
@@ -54,8 +56,10 @@ def learning_summary() -> dict:
             )
             SELECT
               SUM(CASE WHEN action = 'accept' THEN 1 ELSE 0 END) AS accepted,
-              SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected
+              SUM(CASE WHEN action = 'reject' THEN 1 ELSE 0 END) AS rejected,
+              AVG(CASE WHEN action = 'accept' THEN moments.final_score END) AS accepted_score
             FROM latest_decisions
+            LEFT JOIN moments ON moments.id = latest_decisions.moment_id
             WHERE row_number = 1
             """
         ).fetchone()
@@ -71,26 +75,18 @@ def learning_summary() -> dict:
             LIMIT 5
             """
         ).fetchall()
-        accepted_score = connection.execute(
-            """
-            SELECT AVG(moments.final_score) AS score
-            FROM feedback
-            JOIN moments ON moments.id = feedback.moment_id
-            WHERE feedback.action = 'accept'
-            """
-        ).fetchone()["score"]
     return {
         "total_clips_analyzed": total_clips,
         "accepted_count": accepted,
         "rejected_count": rejected,
         "top_moment_types": [{"moment_type": row["moment_type"], "count": row["count"]} for row in top_types],
-        "average_score_accepted": accepted_score or 0,
+        "average_score_accepted": decisions["accepted_score"] or 0,
         "metrics_entered": metrics,
-        **active_model_summary(),
+        **ranker_summary(),
     }
 
 
 @router.post("/learning/train")
 def train_learning() -> dict:
     result = train_personal_ranker()
-    return {"ok": bool(result.get("trained")), **result, **active_model_summary()}
+    return {"ok": bool(result.get("trained")), **result, **ranker_summary()}

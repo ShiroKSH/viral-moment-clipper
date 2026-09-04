@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from uuid import uuid4
 
 from backend.core.config import Settings
@@ -8,7 +9,7 @@ from backend.core.utils import utc_now
 from backend.db.database import get_connection
 from backend.schemas.feedback import FeedbackRequest
 from backend.services.learning.feature_extractor import feature_row
-from backend.services.learning.training import maybe_train_personal_ranker
+from backend.services.learning.training import train_personal_ranker
 
 
 def _feature_snapshot(project_id: str, moment_id: str | None) -> str | None:
@@ -60,8 +61,8 @@ def store_feedback(
         )
     if feedback.action in {"accept", "reject"} or feedback.user_rating is not None:
         try:
-            maybe_train_personal_ranker(config)
+            train_personal_ranker(config)
         except Exception:
             # Feedback is durable even when a local model refresh cannot run.
-            pass
+            logging.getLogger(__name__).exception("Feedback saved, but personal ranker refresh failed.")
     return feedback_id

@@ -31,6 +31,6 @@ class MetricsRequest(BaseModel):
     comments: int = Field(default=0, ge=0)
     shares: int = Field(default=0, ge=0)
     saves: int = Field(default=0, ge=0)
-    avg_watch_time_sec: float = Field(default=0, ge=0)
-    retention_percent: float = Field(default=0, ge=0, le=100)
+    avg_watch_time_sec: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    retention_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     posted_at: str | None = None

@@ -142,10 +142,10 @@ class EndCardConfig(BaseModel):
 
 class LearningConfig(BaseModel):
     enabled: bool = True
-    min_feedback_before_training: int = 12
-    min_metrics_before_training: int = 8
-    exploration_rate: float = 0.12
-    personal_score_weight: float = 0.35
+    min_feedback_before_training: int = Field(default=12, ge=4)
+    min_metrics_before_training: int = Field(default=8, ge=1)
+    exploration_rate: float = Field(default=0.12, ge=0, le=1, allow_inf_nan=False)
+    personal_score_weight: float = Field(default=0.35, ge=0, le=1, allow_inf_nan=False)
     save_training_rows: bool = True
 
 
